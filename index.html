@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KAKATIYAS | Heritage Luxury</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;800&family=Lato:wght@300;400;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              kakatiya: {
+                base: '#FAF9F6', // Off-white / Ivory
+                gold: '#C5A059', // Muted Gold
+                copper: '#B87333', // Copper accent
+                indigo: '#1F2937', // Deep Indigo/Charcoal alternative
+                accent: '#8B4513', // Saddle Brown / Leather
+              }
+            },
+            fontFamily: {
+              serif: ['"Playfair Display"', 'serif'],
+              royal: ['"Cinzel"', 'serif'],
+              sans: ['"Lato"', 'sans-serif'],
+            },
+            animation: {
+              'fade-in': 'fadeIn 1s ease-out',
+              'slide-up': 'slideUp 0.8s ease-out',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(20px)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      /* Smooth scrolling */
+      html { scroll-behavior: smooth; }
+      /* Hide scrollbar for clean UI in some containers */
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "recharts": "https://esm.sh/recharts@^3.7.0",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.13.0",
+    "tailwind-merge": "https://esm.sh/tailwind-merge@^3.4.0",
+    "clsx": "https://esm.sh/clsx@^2.1.1",
+    "next/": "https://esm.sh/next@^16.1.6/",
+    "@prisma/client": "https://esm.sh/@prisma/client@^7.3.0",
+    "next-auth/": "https://esm.sh/next-auth@^4.24.13/",
+    "next-auth": "https://esm.sh/next-auth@^4.24.13",
+    "@next-auth/prisma-adapter": "https://esm.sh/@next-auth/prisma-adapter@^1.0.7",
+    "stripe": "https://esm.sh/stripe@^20.2.0",
+    "crypto": "https://esm.sh/crypto@^1.0.1",
+    "razorpay": "https://esm.sh/razorpay@^2.9.6",
+    "tailwindcss": "https://esm.sh/tailwindcss@^4.1.18",
+    "next": "https://esm.sh/next@^16.1.6"
+  }
+}
+</script>
+</head>
+  <body class="bg-kakatiya-base text-gray-900 font-sans antialiased selection:bg-kakatiya-gold selection:text-white">
+    <div id="root"></div>
+  </body>
+</html>
