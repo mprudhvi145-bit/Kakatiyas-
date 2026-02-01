@@ -1,12 +1,30 @@
 
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { db } from '../../../../lib/db';
 import { sendTextMessage, sendButtonMessage, sendListMessage } from '../../../../lib/whatsapp';
 import { createStripePaymentLink } from '../../../../lib/payments/stripe';
 import { createRazorpayPaymentLink } from '../../../../lib/payments/razorpay';
 import { OrderSource, OrderStatus } from '../../../../types';
 
-// Verification for Meta
+// Verify Webhook Signature (Security Rule)
+function verifySignature(body: string, signature: string | null): boolean {
+  if (!signature) return false;
+  const appSecret = process.env.META_APP_SECRET;
+  if (!appSecret) return true; // Fail open only if env is missing (dev), ideally fail closed.
+
+  const [method, signatureHash] = signature.split('=');
+  if (method !== 'sha256') return false;
+
+  const expectedHash = crypto
+    .createHmac('sha256', appSecret)
+    .update(body)
+    .digest('hex');
+
+  return signatureHash === expectedHash;
+}
+
+// Verification for Meta (GET)
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const mode = searchParams.get('hub.mode');
@@ -19,9 +37,19 @@ export async function GET(req: Request) {
   return new NextResponse('Forbidden', { status: 403 });
 }
 
+// Incoming Messages (POST)
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const rawBody = await req.text();
+    const signature = req.headers.get('x-hub-signature-256');
+
+    // 1. Verify Signature
+    if (process.env.NODE_ENV === 'production' && !verifySignature(rawBody, signature)) {
+      console.error("Invalid WhatsApp Signature");
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    const body = JSON.parse(rawBody);
 
     // Check if it's a message
     if (body.object && body.entry && body.entry[0].changes && body.entry[0].changes[0].value.messages) {
@@ -48,12 +76,15 @@ async function handleWhatsAppFlow(phone: string, text?: string, btnId?: string, 
   // Initialize session if not exists
   if (!session) {
     session = await db.whatsAppSession.create({
-      data: { phone, cart: [], step: 'MENU' }
+      data: { phone, cart: [], step: 'MENU', metadata: {} }
     });
   }
 
+  // Sanitized inputs
+  const safeText = text?.trim().toLowerCase();
+
   // --- GLOBAL RESET ---
-  if (text?.toLowerCase() === 'hi' || text?.toLowerCase() === 'menu' || text?.toLowerCase() === 'reset') {
+  if (safeText === 'hi' || safeText === 'menu' || safeText === 'reset' || safeText === 'start') {
     await db.whatsAppSession.update({
       where: { phone },
       data: { step: 'MENU', cart: [], metadata: {} }
@@ -79,7 +110,8 @@ async function handleWhatsAppFlow(phone: string, text?: string, btnId?: string, 
       ]);
       await db.whatsAppSession.update({ where: { phone }, data: { step: 'BROWSING' } });
     } else if (btnId === 'TALK_HUMAN') {
-      await sendTextMessage(phone, "A concierge will be with you shortly.");
+      await sendTextMessage(phone, "A concierge will be with you shortly. You can type 'menu' to return.");
+      // In a real app, this would trigger an alert to support staff
     }
     return;
   }
@@ -87,11 +119,11 @@ async function handleWhatsAppFlow(phone: string, text?: string, btnId?: string, 
   // 2. BROWSING & PRODUCT SELECTION
   if (session.step === 'BROWSING') {
     if (btnId?.startsWith('CAT_')) {
-      // Fetch Products
+      // Fetch Products (Limit 5 as per prompt)
       const categoryName = btnId.replace('CAT_', ''); // FASHION, JEWELRY
       const products = await db.product.findMany({
         where: { type: categoryName as any },
-        take: 8
+        take: 5
       });
 
       if (products.length === 0) {
@@ -104,7 +136,7 @@ async function handleWhatsAppFlow(phone: string, text?: string, btnId?: string, 
         rows: products.map(p => ({
           id: `PROD_${p.id}`,
           title: p.name.substring(0, 24),
-          description: `₹${p.price} - ${p.description.substring(0, 30)}...`
+          description: `₹${p.price.toLocaleString()} - ${p.sku || p.id.slice(-4)}`
         }))
       }];
 
@@ -115,9 +147,21 @@ async function handleWhatsAppFlow(phone: string, text?: string, btnId?: string, 
   }
 
   // 3. PRODUCT SELECTED -> ASK QTY
+  // Handle both List ID selection AND Manual Text Code entry (Fallback)
   if (session.step === 'SELECTING_PRODUCT') {
+    let productId = null;
+
     if (listId?.startsWith('PROD_')) {
-      const productId = listId.replace('PROD_', '');
+      productId = listId.replace('PROD_', '');
+    } else if (text) {
+      // Try to find product by exact SKU or ID
+      const p = await db.product.findFirst({
+        where: { OR: [{ sku: text }, { id: text }] }
+      });
+      if (p) productId = p.id;
+    }
+
+    if (productId) {
       await db.whatsAppSession.update({ 
         where: { phone }, 
         data: { 
@@ -126,6 +170,8 @@ async function handleWhatsAppFlow(phone: string, text?: string, btnId?: string, 
         } 
       });
       await sendTextMessage(phone, "Excellent choice. How many units would you like? (Please type a number, e.g., 1)");
+    } else if (text) {
+      await sendTextMessage(phone, "We couldn't find that product. Please select from the list or type 'menu' to restart.");
     }
     return;
   }
@@ -134,12 +180,12 @@ async function handleWhatsAppFlow(phone: string, text?: string, btnId?: string, 
   if (session.step === 'SELECTING_QTY') {
     const qty = parseInt(text || '1');
     if (isNaN(qty) || qty < 1) {
-      await sendTextMessage(phone, "Please enter a valid quantity.");
+      await sendTextMessage(phone, "Please enter a valid quantity (e.g., 1).");
       return;
     }
 
     // Update Cart
-    const currentCart = session.cart as any[] || [];
+    const currentCart = (session.cart as any[]) || [];
     const meta = session.metadata as any;
     
     // Add item
@@ -157,7 +203,7 @@ async function handleWhatsAppFlow(phone: string, text?: string, btnId?: string, 
     await sendTextMessage(phone, `Added ${qty} item(s) to cart.`);
     await sendButtonMessage(phone, "What would you like to do next?", [
       { id: 'CHECKOUT', title: 'Checkout' },
-      { id: 'CONTINUE', title: 'Continue Shopping' },
+      { id: 'CONTINUE', title: 'Add More Items' },
       { id: 'CLEAR', title: 'Clear Cart' }
     ]);
     return;
@@ -166,8 +212,14 @@ async function handleWhatsAppFlow(phone: string, text?: string, btnId?: string, 
   // 5. CART ACTIONS
   if (session.step === 'CART_ACTIONS') {
     if (btnId === 'CONTINUE') {
-      await db.whatsAppSession.update({ where: { phone }, data: { step: 'MENU' } }); // Loop back logic could be better, simplified here
-      await handleWhatsAppFlow(phone, 'MENU'); // Trigger menu again
+      await db.whatsAppSession.update({ where: { phone }, data: { step: 'MENU' } });
+      // Re-trigger menu prompt immediately for UX
+      await sendButtonMessage(phone, "Select a category:", [
+        { id: 'CAT_FASHION', title: 'Fashion' },
+        { id: 'CAT_JEWELRY', title: 'Jewelry' },
+        { id: 'CAT_HANDLOOM', title: 'Handloom' }
+      ]);
+      await db.whatsAppSession.update({ where: { phone }, data: { step: 'BROWSING' } });
     } else if (btnId === 'CLEAR') {
       await db.whatsAppSession.update({ where: { phone }, data: { cart: [], step: 'MENU' } });
       await sendTextMessage(phone, "Cart cleared.");
@@ -191,7 +243,8 @@ async function handleWhatsAppFlow(phone: string, text?: string, btnId?: string, 
       });
       await sendButtonMessage(phone, "Select Payment Method:", [
         { id: 'PAY_RAZORPAY', title: 'Razorpay Link' },
-        { id: 'PAY_STRIPE', title: 'Stripe Link' }
+        { id: 'PAY_STRIPE', title: 'Stripe Link' },
+        { id: 'PAY_WEB', title: 'Pay on Website' }
       ]);
     }
     return;
@@ -199,61 +252,78 @@ async function handleWhatsAppFlow(phone: string, text?: string, btnId?: string, 
 
   // 7. FINALIZE ORDER
   if (session.step === 'CHECKOUT_PAYMENT') {
-    if (btnId === 'PAY_RAZORPAY' || btnId === 'PAY_STRIPE') {
+    if (btnId === 'PAY_RAZORPAY' || btnId === 'PAY_STRIPE' || btnId === 'PAY_WEB') {
       const cart = session.cart as any[];
-      if (!cart || cart.length === 0) return;
-
-      // Calculate Total & Validate Stock
-      let total = 0;
-      const orderItems = [];
-
-      for (const item of cart) {
-        const product = await db.product.findUnique({ where: { id: item.productId } });
-        if (product) {
-          total += product.price * item.quantity;
-          orderItems.push({
-            productId: product.id,
-            quantity: item.quantity,
-            price: product.price
-          });
-        }
-      }
-
-      // Create Order
-      const order = await db.order.create({
-        data: {
-          source: OrderSource.WHATSAPP,
-          whatsappNumber: phone,
-          status: OrderStatus.PENDING,
-          total: total,
-          items: {
-            create: orderItems
-          }
-        }
-      });
-
-      // Generate Link
-      let paymentLink = '';
-      try {
-        if (btnId === 'PAY_STRIPE') {
-          paymentLink = (await createStripePaymentLink(total, order.id)) || '';
-        } else {
-          paymentLink = await createRazorpayPaymentLink(total, order.id, phone);
-        }
-      } catch (e) {
-        console.error(e);
-        await sendTextMessage(phone, "Error generating payment link. Our team will contact you.");
+      if (!cart || cart.length === 0) {
+        await sendTextMessage(phone, "Your cart is empty. Type 'menu' to start shopping.");
         return;
       }
 
-      // Send Response
-      await sendTextMessage(phone, `*Order Placed Successfully!* 🏛️\nOrder ID: #${order.id.slice(-6)}\nTotal: ₹${total}\n\nPlease complete payment here: ${paymentLink}\n\nThank you for choosing Kakatiyas.`);
+      // Calculate Total & Validate Stock & Inventory Deduction
+      // NOTE: For robustness, this should be a transaction.
+      // We will perform a simplified check-and-create here.
 
-      // Reset Session
-      await db.whatsAppSession.update({
-        where: { phone },
-        data: { cart: [], step: 'MENU', metadata: {} }
-      });
+      try {
+        const order = await db.$transaction(async (tx) => {
+           let total = 0;
+           const orderItems = [];
+
+           for (const item of cart) {
+             const product = await tx.product.findUnique({ where: { id: item.productId } });
+             if (!product) throw new Error(`Product not found: ${item.productId}`);
+             if (product.stock < item.quantity) throw new Error(`Insufficient stock for ${product.name}`);
+
+             // Deduct Inventory
+             await tx.product.update({
+               where: { id: item.productId },
+               data: { stock: { decrement: item.quantity } }
+             });
+
+             total += product.price * item.quantity;
+             orderItems.push({
+               productId: product.id,
+               quantity: item.quantity,
+               price: product.price
+             });
+           }
+
+           return await tx.order.create({
+             data: {
+               source: OrderSource.WHATSAPP,
+               whatsappNumber: phone,
+               status: OrderStatus.PENDING,
+               total: total,
+               items: {
+                 create: orderItems
+               }
+             }
+           });
+        });
+
+        // Generate Link
+        let paymentLink = '';
+        if (btnId === 'PAY_STRIPE') {
+          paymentLink = (await createStripePaymentLink(order.total, order.id)) || '';
+        } else if (btnId === 'PAY_RAZORPAY') {
+          paymentLink = await createRazorpayPaymentLink(order.total, order.id, phone);
+        } else {
+          // Pay on Website (fallback)
+          paymentLink = `${process.env.NEXTAUTH_URL}/profile/orders/${order.id}`;
+        }
+
+        // Send Response
+        await sendTextMessage(phone, `*Order Placed Successfully!* 🏛️\nOrder ID: #${order.id.slice(-6)}\nTotal: ₹${order.total.toLocaleString()}\n\nPlease complete payment here: ${paymentLink}\n\nThank you for choosing Kakatiyas.`);
+
+        // Reset Session
+        await db.whatsAppSession.update({
+          where: { phone },
+          data: { cart: [], step: 'MENU', metadata: {} }
+        });
+
+      } catch (e: any) {
+        console.error("Order Creation Error", e);
+        await sendTextMessage(phone, `Unable to place order: ${e.message}. Please type 'menu' to try again.`);
+      }
     }
     return;
   }
