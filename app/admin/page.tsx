@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState } from 'react';
@@ -98,7 +97,9 @@ export default function Dashboard() {
                       <img src={p.images[0]} alt="" className="w-10 h-10 object-cover" />
                       <span className="font-medium text-stone-900">{p.name}</span>
                     </td>
-                    <td className="px-6 py-4 text-stone-600">{p.category}</td>
+                    <td className="px-6 py-4 text-stone-600">
+                      {typeof p.category === 'object' ? p.category?.name : p.category}
+                    </td>
                     <td className="px-6 py-4 font-serif">{CURRENCY}{p.price}</td>
                     <td className="px-6 py-4">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">

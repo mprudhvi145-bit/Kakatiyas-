@@ -20,3 +20,30 @@ export const createStripeIntent = async (amount: number, orderId: string) => {
 
   return paymentIntent;
 };
+
+// Generate a payment link for WhatsApp
+export const createStripePaymentLink = async (amount: number, orderId: string) => {
+  // Use checkout sessions for a link-based flow without needing frontend elements
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ['card'],
+    line_items: [{
+      price_data: {
+        currency: 'inr',
+        product_data: {
+          name: `Order #${orderId.slice(-6)} - Kakatiyas`,
+        },
+        unit_amount: Math.round(amount * 100),
+      },
+      quantity: 1,
+    }],
+    mode: 'payment',
+    success_url: `${process.env.NEXTAUTH_URL}/profile/orders/${orderId}?status=success`,
+    cancel_url: `${process.env.NEXTAUTH_URL}/profile/orders/${orderId}?status=cancel`,
+    metadata: {
+      orderId: orderId,
+      source: 'WHATSAPP'
+    }
+  });
+
+  return session.url;
+};

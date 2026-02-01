@@ -3,6 +3,8 @@ import React from 'react';
 import { db } from '../../../lib/db';
 import { requireAdmin } from '../../../lib/auth-guard';
 import { CURRENCY } from '../../../lib/constants';
+import { OrderSource } from '../../../types';
+import { MessageCircle, Globe } from 'lucide-react';
 
 export default async function AdminOrdersPage() {
   await requireAdmin();
@@ -23,6 +25,7 @@ export default async function AdminOrdersPage() {
           <thead className="bg-stone-50 text-stone-500 uppercase text-xs tracking-wider">
             <tr>
               <th className="px-6 py-4 font-medium">Order ID</th>
+              <th className="px-6 py-4 font-medium">Source</th>
               <th className="px-6 py-4 font-medium">Customer</th>
               <th className="px-6 py-4 font-medium">Date</th>
               <th className="px-6 py-4 font-medium">Status</th>
@@ -35,8 +38,28 @@ export default async function AdminOrdersPage() {
               <tr key={order.id} className="hover:bg-stone-50 transition-colors">
                 <td className="px-6 py-4 font-mono text-xs">{order.id.slice(-6)}</td>
                 <td className="px-6 py-4">
-                  <div className="text-stone-900 font-medium">{order.user.name}</div>
-                  <div className="text-xs text-stone-500">{order.user.email}</div>
+                  {order.source === OrderSource.WHATSAPP ? (
+                    <span className="flex items-center gap-2 text-green-600 bg-green-50 px-2 py-1 rounded-full w-fit">
+                      <MessageCircle size={14} /> <span className="text-[10px] font-bold">WHATSAPP</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2 text-stone-600 bg-stone-100 px-2 py-1 rounded-full w-fit">
+                      <Globe size={14} /> <span className="text-[10px] font-bold">WEB</span>
+                    </span>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  {order.user ? (
+                    <>
+                      <div className="text-stone-900 font-medium">{order.user.name}</div>
+                      <div className="text-xs text-stone-500">{order.user.email}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-stone-900 font-medium">Guest</div>
+                      <div className="text-xs text-stone-500">{order.whatsappNumber || 'N/A'}</div>
+                    </>
+                  )}
                 </td>
                 <td className="px-6 py-4 text-stone-600">{new Date(order.createdAt).toLocaleDateString()}</td>
                 <td className="px-6 py-4">
@@ -52,7 +75,7 @@ export default async function AdminOrdersPage() {
             ))}
             {orders.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-6 py-12 text-center text-stone-500">
+                <td colSpan={7} className="px-6 py-12 text-center text-stone-500">
                   No orders found.
                 </td>
               </tr>

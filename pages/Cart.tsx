@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { CartItem } from '../types';
 import { CURRENCY } from '../lib/constants';
 import { SectionTitle, Button } from '../components/ui/Shared';
@@ -38,7 +38,9 @@ export default function Cart({ cart, updateQuantity, removeFromCart }: CartProps
                   <h3 className="font-royal text-lg text-stone-900">{item.name}</h3>
                   <p className="font-serif text-stone-600">{CURRENCY}{(item.price * item.quantity).toLocaleString()}</p>
                 </div>
-                <p className="text-xs text-stone-500 uppercase tracking-widest mt-1">{item.category}</p>
+                <p className="text-xs text-stone-500 uppercase tracking-widest mt-1">
+                  {typeof item.category === 'object' ? item.category?.name : item.category}
+                </p>
               </div>
               <div className="flex justify-between items-center mt-4">
                 <div className="flex items-center border border-stone-200">

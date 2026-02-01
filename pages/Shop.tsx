@@ -10,9 +10,9 @@ interface ShopProps {
 }
 
 export default function Shop({ addToCart }: ShopProps) {
-  const [filter, setFilter] = useState<Category | 'ALL'>('ALL');
+  const [filter, setFilter] = useState<string>('ALL');
   const query = new URLSearchParams(useLocation().search);
-  const catParam = query.get('cat') as Category | null;
+  const catParam = query.get('cat');
 
   React.useEffect(() => {
     if (catParam) setFilter(catParam);
@@ -20,7 +20,10 @@ export default function Shop({ addToCart }: ShopProps) {
 
   const filteredProducts = filter === 'ALL' 
     ? MOCK_PRODUCTS 
-    : MOCK_PRODUCTS.filter(p => p.category === filter);
+    : MOCK_PRODUCTS.filter(p => {
+        const catName = typeof p.category === 'object' ? p.category?.name : p.category;
+        return catName?.toUpperCase() === filter;
+      });
 
   return (
     <div className="pt-24 pb-20 container mx-auto px-6">
@@ -31,7 +34,7 @@ export default function Shop({ addToCart }: ShopProps) {
         {['ALL', 'FASHION', 'JEWELRY', 'HANDLOOM'].map((cat) => (
           <button
             key={cat}
-            onClick={() => setFilter(cat as any)}
+            onClick={() => setFilter(cat)}
             className={`uppercase text-xs tracking-widest pb-4 transition-all ${
               filter === cat 
                 ? 'text-kakatiya-gold border-b-2 border-kakatiya-gold' 
@@ -69,7 +72,9 @@ export default function Shop({ addToCart }: ShopProps) {
               </div>
             </div>
             <div className="text-center space-y-2">
-              <p className="text-[10px] text-stone-500 uppercase tracking-widest">{product.category}</p>
+              <p className="text-[10px] text-stone-500 uppercase tracking-widest">
+                {typeof product.category === 'object' ? product.category?.name : product.category}
+              </p>
               <h3 className="font-royal text-lg text-stone-900 group-hover:text-kakatiya-gold transition-colors">{product.name}</h3>
               <p className="font-serif italic text-stone-600">{CURRENCY}{product.price.toLocaleString()}</p>
             </div>

@@ -21,6 +21,11 @@ export enum OrderStatus {
   CANCELLED = 'CANCELLED'
 }
 
+export enum OrderSource {
+  WEB = 'WEB',
+  WHATSAPP = 'WHATSAPP'
+}
+
 // Domain Models
 
 export interface User {
@@ -73,6 +78,7 @@ export interface Product {
   newArrival?: boolean; // UI specific
   material?: string; // UI specific
   variants?: any[]; // UI specific
+  sku?: string; // UI specific
 }
 
 export interface CartItem extends Product {
@@ -90,11 +96,14 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
-  userId: string;
+  userId: string | null;
+  whatsappNumber?: string | null;
+  source: OrderSource;
   status: OrderStatus;
   total: number;
   items: OrderItem[] | CartItem[]; // Union to support CartItem until API is ready
   createdAt: Date;
   // UI compatibility
+  user?: User;
   date?: string; 
 }
